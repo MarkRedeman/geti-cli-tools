@@ -1,0 +1,30 @@
+{
+    "name": "model-info-extractor",
+    "version": "1.0.0",
+    "type": "module",
+    "description": "Extract model info from OVMS XML files",
+    "main": "extract-model-info.ts",
+    "scripts": {
+        "start": "bun run extract-model-info.ts",
+        "build:server": "npx openapi-typescript src/api/geti-openapi-schema.json -o src/api/geti-openapi-schema.ts",
+        "dev": "bun run extract-model-info.ts .",
+        "format": "prettier --write --cache \"./src/**/*.{js,ts,jsx,tsx,css}\"",
+        "type-check": "tsc --noEmit"
+    },
+    "dependencies": {
+        "@types/adm-zip": "^0.5.7",
+        "@xmldom/xmldom": "^0.8.10",
+        "adm-zip": "^0.5.16",
+        "openapi-fetch": "^0.14.0",
+        "openapi-typescript": "^7.8.0",
+        "openapi-typescript-fetch": "^2.2.0"
+    },
+    "devDependencies": {
+        "@ianvs/prettier-plugin-sort-imports": "^4.5.1",
+        "@types/node": "^20.0.0",
+        "bun-types": "latest",
+        "prettier": "^3.6.2",
+        "typescript": "^5.9.2"
+    },
+    "license": "MIT"
+}
