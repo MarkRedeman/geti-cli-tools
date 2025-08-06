@@ -10,5 +10,6 @@ export const client = createPathBasedClient<paths>({
         'x-api-key': apiKey,
     },
 });
+// client['version'] = '2.12';
 
 export type Client = typeof client;

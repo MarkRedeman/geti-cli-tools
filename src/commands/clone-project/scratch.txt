@@ -1,0 +1,376 @@
+import * as fs from 'fs';
+import * as path from 'path';
+import { ApplicationServices } from '@geti/core/src/services/application-services.interface';
+import { getApiServices } from '@geti/core/src/services/get-api-services';
+import { WorkspaceIdentifier } from '@geti/core/src/workspaces/services/workspaces.interface';
+import Headers from '@mjackson/headers';
+import { APIRequestContext } from '@playwright/test';
+import { AxiosResponse } from 'axios';
+import _ from 'lodash';
+import kebabCase from 'lodash/kebabCase';
+import mime from 'mime';
+import { Annotation, AnnotationLabel } from '../../../../src/core/annotations/annotation.interface';
+import { Label, LabelsRelationType } from '../../../../src/core/labels/label.interface';
+import { isEmptyLabel } from '../../../../src/core/labels/utils';
+import { MEDIA_GROUP, MEDIA_TYPE } from '../../../../src/core/media/base-media.interface';
+import { isImage } from '../../../../src/core/media/image.interface';
+import { MediaItem } from '../../../../src/core/media/media.interface';
+import { getMediaItemFromDTO } from '../../../../src/core/media/services/utils';
+import { isVideo } from '../../../../src/core/media/video.interface';
+import { DOMAIN } from '../../../../src/core/projects/core.interface';
+import { DatasetIdentifier } from '../../../../src/core/projects/dataset.interface';
+import { ProjectProps } from '../../../../src/core/projects/project.interface';
+import { ProjectService } from '../../../../src/core/projects/services/project-service.interface';
+import { resolveDatasetPath } from '../../../utils/dataset';
+import { getApiServiceConfiguration } from '../../api-fixtures';
+import { test } from '../../fixtures';
+import { mediaPagesIterator } from '../iterators';
+import { TestProject } from '../test-project';
+
+type promiseExecutor<T> = (
+    resolve: (value?: T | PromiseLike<T>) => void,
+    reject: (reason?: any) => void
+) => void;
+class RetryablePromise<T> extends Promise<T> {
+    static retry<T>(retries: number, executor: promiseExecutor<T>): Promise<T | undefined> {
+        return new RetryablePromise(executor).catch((error) =>
+            retries > 0
+                ? RetryablePromise.retry(retries - 1, executor)
+                : RetryablePromise.reject(error)
+        );
+    }
+}
+
+const cardSegmentation = {
+    organizationId: '6cbc7682-cfc1-4770-96f6-4c8c7ab51a52',
+    workspaceId: '97e6ad03-4876-45c5-96de-b564522f0649',
+    projectId: '678f87b8c04f77fc54b9a165',
+    projects: [
+        '67850c4efe167c785aea6b1a',
+        '67850c05dec95ec797df7442',
+        '678f87b8c04f77fc54b9a165',
+        '67850fe1548b266d6b2ae1bb',
+        '6790f2db6396992a0d533d9e',
+    ],
+};
+
+const configuration = cardSegmentation;
+
+async function downloadMediaItem(
+    applicationServices: ApplicationServices,
+    datasetIdentifier: DatasetIdentifier,
+    project: ProjectProps,
+    mediaItem: MediaItem
+) {
+    const { annotationService, router } = applicationServices;
+
+    const annotations = isVideo(mediaItem)
+        ? annotationService.getVideoAnnotations(datasetIdentifier, project.labels, mediaItem)
+        : annotationService.getAnnotations(datasetIdentifier, project.labels, mediaItem);
+
+    // TODO
+    // const predictions = isVideo(mediaItem)
+    //     ? annotationService.getVideoAnnotations(datasetIdentifier, project.labels, mediaItem)
+    //     : annotationService.getAnnotations(datasetIdentifier, project.labels, mediaItem);
+
+    const imageSrc = router.PREFIX(mediaItem.src);
+    const responsePromise = applicationServices.instance.get(imageSrc, {
+        responseType: 'stream',
+        beforeRedirect: (options, response) => {
+            console.log('oh this is before?', options, response);
+        },
+    });
+
+    return { mediaItem, annotations, predictions: [], responsePromise };
+}
+
+async function storeMediaItem(
+    {
+        mediaItem,
+        annotations,
+        responsePromise,
+    }: {
+        mediaItem: MediaItem;
+        annotations: Promise<Annotation[] | Record<number, Annotation[]>>;
+        responsePromise: Promise<AxiosResponse>;
+    },
+    exportPath: string
+) {
+    const filename = path.resolve(exportPath, kebabCase(mediaItem.name));
+
+    // TODO Put this part into a store function,
+    // compose with other, store, pipe to other dataset ...
+    fs.writeFileSync(`${filename}.media-item.json`, JSON.stringify(mediaItem));
+    fs.writeFileSync(`${filename}.annotations.json`, JSON.stringify(await annotations));
+
+    const response = await responsePromise;
+    const headers = new Headers(response.headers as {});
+    let extension = mime.getExtension(headers.contentType.mediaType ?? 'text');
+    if (extension === 'bin') {
+        extension = 'mp4';
+    }
+
+    fs.writeFileSync(`${filename}.${extension}`, new Uint8Array(Buffer.from(response.data)));
+}
+
+async function importToDataset(
+    { annotationService, projectService, instance, router }: ApplicationServices,
+    {
+        mediaItem,
+        annotations,
+        responsePromise,
+    }: {
+        mediaItem: MediaItem;
+        annotations: Promise<Annotation[] | Record<number, Annotation[]>>;
+        responsePromise: Promise<AxiosResponse>;
+    },
+    datasetIdentifier: DatasetIdentifier,
+    project: ProjectProps
+) {
+    // ...
+    //const project = await projectService.getProject(datasetIdentifier);
+
+    const response = await responsePromise;
+    const stream = response.data;
+
+    const headers = new Headers(response.headers as {});
+    let extension = mime.getExtension(headers.contentType.mediaType ?? 'text');
+    if (extension === 'bin') {
+        extension = 'mp4';
+    }
+
+    const formData = new FormData();
+    formData.append('file', new Blob([stream]), `${mediaItem.name}.${extension}`);
+
+    const mapLabelToProject = (label: AnnotationLabel) => {
+        const projectLabelId = project.labels.find(({ name }) => name === label.name);
+
+        if (projectLabelId === undefined) {
+            console.warn('Could not find project label', project, label);
+            return label;
+        }
+
+        return { ...label, id: projectLabelId.id };
+    };
+
+    if (isImage(mediaItem)) {
+        const result = await instance.post(
+            router.MEDIA_UPLOAD(datasetIdentifier, MEDIA_GROUP.IMAGES),
+            formData,
+            {
+                headers: { 'content-type': 'multipart/form-data' },
+            }
+        );
+
+        const newMediaItem = getMediaItemFromDTO(datasetIdentifier, result.data, router);
+
+        const mappedAnnotations = ((await annotations) as Annotation[]).map(
+            (annotation): Annotation => {
+                const labels = annotation.labels.map(mapLabelToProject);
+
+                return { ...annotation, labels };
+            }
+        );
+        // TODO: Remap labels
+        await annotationService.saveAnnotations(datasetIdentifier, newMediaItem, mappedAnnotations);
+    } else {
+        if (isVideo(mediaItem)) {
+            // RETRY due to 503 error :'(
+            const result = await RetryablePromise.retry(3, () =>
+                instance.post(
+                    router.MEDIA_UPLOAD(datasetIdentifier, MEDIA_GROUP.VIDEOS),
+                    formData,
+                    {
+                        headers: { 'content-type': 'multipart/form-data' },
+                    }
+                )
+            );
+
+            if (result === undefined) {
+                console.warn('Could not upload this media item', { mediaItem });
+                return;
+            }
+
+            const newMediaItem = getMediaItemFromDTO(datasetIdentifier, result.data, router);
+            if (!isVideo(newMediaItem)) {
+                return;
+            }
+
+            // TODO: Probably change this to an iterator so that we don't store all annotaitons in memory?
+            const videoAnnotations = (await annotations) as Record<number, Annotation[]>;
+
+            for (const frameNumber of Object.keys(videoAnnotations)) {
+                const annotations = videoAnnotations[Number(frameNumber)].map(
+                    (annotation): Annotation => {
+                        const labels = annotation.labels.map(mapLabelToProject);
+
+                        return { ...annotation, labels };
+                    }
+                );
+
+                await annotationService.saveAnnotations(
+                    datasetIdentifier,
+                    {
+                        ...newMediaItem,
+                        identifier: {
+                            ...newMediaItem.identifier,
+                            type: MEDIA_TYPE.VIDEO_FRAME,
+                            frameNumber: Number(frameNumber),
+                        },
+                    },
+                    annotations
+                );
+            }
+        }
+    }
+}
+
+async function steps<T>(data: Iterable<T>, name: (d: T) => string, body: (d: T) => Promise<void>) {
+    for await (const d of data) {
+        await test.step(name(d), async () => {
+            await body(d);
+        });
+    }
+}
+
+async function duplicateProject(
+    project: ProjectProps,
+    projectService: ProjectService,
+    workspaceIdentifier: WorkspaceIdentifier
+) {
+    const labelIdToName = Object.fromEntries(
+        project.tasks.flatMap((task) => task.labels.map((label) => [label.id, label.name]))
+    );
+    // TODO: unique rule for anomaly
+    const newProject = (await projectService.createProject(
+        workspaceIdentifier,
+        project.name,
+        project.domains,
+        project.tasks
+            // Remove the crop task as that is added by the service
+            .filter((task) => task.domain !== DOMAIN.CROP)
+            .map((task) => {
+                // Remove empty label as it is added by the backend
+                const labels = task.labels
+                    .filter((label) => isEmptyLabel(label) === false)
+                    .map((label) => {
+                        return {
+                            ...label,
+                            id: labelIdToName[label.id],
+                            parentLabelId:
+                                label.parentLabelId === null
+                                    ? null
+                                    : labelIdToName[label.parentLabelId],
+                            // Remove childern as we loaded the flattned tree
+                            // TODO: look into removing the whole notion of children
+                            children: [],
+                        };
+                    });
+
+                return {
+                    labels,
+                    domain: task.domain,
+                    relation: LabelsRelationType.SINGLE_SELECTION,
+                };
+            })
+    )) as ProjectProps;
+
+    const projectIdentifier = { ...workspaceIdentifier, projectId: newProject.id };
+    for (const dataset of project.datasets) {
+        if (newProject.datasets.some(({ name }) => name === dataset.name)) {
+            continue;
+        }
+
+        await projectService.createDataset({ projectIdentifier, name: dataset.name });
+    }
+
+    return await projectService.getProject(projectIdentifier);
+}
+
+const getTargetApplicationServices = (request: APIRequestContext) => {
+    const baseURL = 'https://10.211.120.55';
+    const apiToken = 'geti_pat_zH27X205qZjEKnTF9SIH2uS61MaYHREZW5GCqSod56h_00TC4G';
+    const asc = getApiServiceConfiguration(baseURL, apiToken, request);
+    const targetApplicationServices = getApiServices(asc);
+
+    return targetApplicationServices;
+};
+
+test('Download project dataset', async ({
+    apiServiceConfiguration,
+    applicationServices,
+    request,
+}) => {
+    const { projectService, annotationService, mediaService } = applicationServices;
+    const testProject = new TestProject(apiServiceConfiguration);
+
+    await test.step('Fetch workspace details', async () => {
+        await testProject.getWorkspace();
+    });
+
+    testProject.projectId = configuration.projectId;
+
+    const projectIdentifier = testProject.projectIdentifier();
+    const project = await projectService.getProject(projectIdentifier);
+
+    const targetApplicationServices = getTargetApplicationServices(request);
+    const otherTestProject = new TestProject(targetApplicationServices);
+
+    await test.step('Fetch other workspace details', async () => {
+        await otherTestProject.getWorkspace(1);
+    });
+    const otherProject = await duplicateProject(
+        project,
+        targetApplicationServices.projectService,
+        otherTestProject.workspaceIdentifier()
+    );
+
+    const projectPath = resolveDatasetPath('exported', kebabCase(project.name));
+    fs.mkdirSync(projectPath, { recursive: true });
+    fs.writeFileSync(path.resolve(projectPath, `project.json`), JSON.stringify(project));
+
+    await steps(
+        project.datasets,
+        (dataset) => `Downloading "${dataset.name}"`,
+        async (dataset) => {
+            const datasetIdentifier = { ...projectIdentifier, datasetId: dataset.id };
+            const exportPath = resolveDatasetPath(
+                'exported',
+                kebabCase(project.name),
+                kebabCase(dataset.name)
+            );
+
+            fs.mkdirSync(exportPath, { recursive: true });
+
+            const targetDatasetId = otherProject.datasets.find(({ name }) => name === dataset.name);
+            const targetDatasetIdentifier = {
+                ...otherTestProject.workspaceIdentifier(),
+                projectId: otherProject.id,
+                datasetId: targetDatasetId?.id ?? '',
+            };
+
+            const mediaItems = mediaPagesIterator(datasetIdentifier, mediaService, 50);
+            for await (const mediaItem of mediaItems) {
+                await test.step(mediaItem.name, async () => {
+                    const { predictions, annotations, responsePromise } = await downloadMediaItem(
+                        applicationServices,
+                        datasetIdentifier,
+                        project,
+                        mediaItem
+                    );
+
+                    await storeMediaItem(
+                        { mediaItem, annotations, predictions, responsePromise },
+                        exportPath
+                    );
+                    await importToDataset(
+                        targetApplicationServices,
+                        { mediaItem, annotations, responsePromise },
+                        targetDatasetIdentifier,
+                        otherProject
+                    );
+                });
+            }
+        }
+    );
+});

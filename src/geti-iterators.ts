@@ -49,7 +49,7 @@ type ArrayElement<ArrayType extends readonly unknown[]> =
     ArrayType extends readonly (infer ElementType)[] ? ElementType : never;
 
 export type Projects = components['schemas']['project_list']['projects'];
-type Project = ArrayElement<Exclude<Projects, undefined>>;
+export type ProjectFromList = ArrayElement<Exclude<Projects, undefined>>;
 
 const projectsPagesIterator = (client: Client, workspaceIdentifier: WorkspaceIdentifier) => {
     const projects = flatten(
@@ -83,7 +83,7 @@ const projectsPagesIterator = (client: Client, workspaceIdentifier: WorkspaceIde
 
     return projects;
 };
-type ProjectFilter = (project: Project) => boolean;
+type ProjectFilter = (project: ProjectFromList) => boolean;
 
 export async function* projectsIterator(
     client: Client,
