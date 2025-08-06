@@ -13,6 +13,9 @@ A collection of cli commands to test and manage Geti projects.
 
 ## E2E Test steps
 
+> [!NOTE]
+> Before running the commands make sure to add a `.env` based on the [`.env.example`](./env.example)
+
 1. Create projects by importing datasets
 2. Train all models in all projects
 ```bash
