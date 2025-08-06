@@ -55,7 +55,7 @@ for await (const { project, workspaceId, organizationId } of projects) {
         // Skip models that have been trained already
         if (
             modelGroups.some(
-                ({ modelGroup }) => modelGroup.model_template_id === algorithm.model_template_id
+                ({ modelGroup }) => modelGroup.model_template_id === algorithm.model_manifest_id
             )
         ) {
             console.log(`[${project.name}] Train ${algorithm.name} - trained`);
@@ -70,7 +70,7 @@ for await (const { project, workspaceId, organizationId } of projects) {
                 path: projectIdentifier,
             },
             body: {
-                model_template_id: algorithm.model_template_id,
+                model_template_id: algorithm.model_manifest_id,
             },
         });
     }

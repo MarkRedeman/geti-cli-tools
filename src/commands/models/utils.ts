@@ -16,14 +16,14 @@ export function isBeingOptimized(jobs: Jobs, modelIdentifier: ModelIdentifier) {
     });
 }
 
-export function isBeingTrained(jobs: Jobs, algorithm: { model_template_id?: string }) {
+export function isBeingTrained(jobs: Jobs, algorithm: { model_manifest_id?: string }) {
     return jobs.some((job) => {
         if (job.type !== 'train') {
             return false;
         }
 
         return (
-            job.metadata?.task?.model_template_id === algorithm.model_template_id &&
+            job.metadata?.task?.model_template_id === algorithm.model_manifest_id &&
             (job.state === 'running' || job.state === 'scheduled')
         );
     });
