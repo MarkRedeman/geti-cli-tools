@@ -79,6 +79,10 @@ async function getImageAnnotations(
         throw annotationsResponse.error;
     }
 
+    if (annotationsResponse.response.status === 204) {
+        return [];
+    }
+
     return (annotationsResponse.data as ImageAnnotationResponse).annotations;
 }
 
@@ -123,8 +127,15 @@ export function getVideoAnnotations(
 
         const data = annotationsResponse.data as ActualVideoAnnotationsResponse;
 
+        if (annotationsResponse.response.status === 204) {
+            return {
+                data: [],
+                nextPage: undefined,
+            };
+        }
         // Make sure that we escape the loop if we receive weird data
         if (
+            !data ||
             isNaN(data.video_annotation_properties.total_requested_count) ||
             isNaN(data.video_annotation_properties.total_count) ||
             data.video_annotation_properties.total_requested_count < 0 ||
@@ -299,7 +310,7 @@ export async function copyMediaItem(
         });
 
         if (annotationsResponse.error) {
-            throw annotationsResponse.error;
+            console.error(annotationsResponse.error);
         }
     }
 
@@ -349,12 +360,9 @@ export async function copyMediaItem(
             });
 
             if (annotationsResponse.error) {
-                throw annotationsResponse.error;
+                console.error(videoAnnotation.media_identifier, annotationsResponse.error);
             }
-
-            console.log(annotationsResponse.response.status);
         }
-        console.log(newMediaItem);
 
         // Download video blob
         // Upload video blob
