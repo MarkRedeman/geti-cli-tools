@@ -1,6 +1,7 @@
 #!/usr/bin/env bun
 import { getEnv } from '../../api/environment';
 import { mediaPagesIterator } from '../../geti-iterators';
+import { chunk } from '../../iterators';
 import { DatasetIdentifier, ProjectIdentifier } from '../../types';
 import { getClient } from './../../api/client';
 import { copyMediaItem, getAnnotationMapToNewProject } from './copy-media-item';
@@ -10,6 +11,7 @@ import { getDataset } from './get-dataset';
 
 const CONFIG = {
     DELETE_PROJECT: false,
+    UPLOAD_IN_CHUNKCS: 5,
 };
 
 const sourceClient = getClient(getEnv('_SOURCE'));
@@ -71,20 +73,29 @@ for await (const dataset of oldProject.datasets) {
 
     const getNewLabel = getAnnotationMapToNewProject(oldProject, newProject);
 
-    // Clone media items
-    for await (const mediaItem of mediaPagesIterator(sourceClient, sourceDatasetIdentifier)) {
-        console.log(
-            mediaItem.name,
-            mediaItem.type === 'video' ? mediaItem.media_information?.frame_count : 0
-        );
+    const mediaChunks = chunk(
+        mediaPagesIterator(sourceClient, sourceDatasetIdentifier),
+        CONFIG.UPLOAD_IN_CHUNKCS
+    );
 
-        await copyMediaItem(
-            source.client,
-            sourceDatasetIdentifier,
-            destination.client,
-            destinationDatasetIdentifier,
-            mediaItem,
-            getNewLabel
+    // Clone media items
+    for await (const mediaChunk of mediaChunks) {
+        await Promise.all(
+            mediaChunk.map(async (mediaItem) => {
+                console.log(
+                    mediaItem.name,
+                    mediaItem.type === 'video' ? mediaItem.media_information?.frame_count : 0
+                );
+
+                await copyMediaItem(
+                    source.client,
+                    sourceDatasetIdentifier,
+                    destination.client,
+                    destinationDatasetIdentifier,
+                    mediaItem,
+                    getNewLabel
+                );
+            })
         );
     }
 }
