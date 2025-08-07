@@ -1,7 +1,8 @@
 #!/usr/bin/env bun
+import { getEnv } from '../../api/environment';
 import { mediaPagesIterator } from '../../geti-iterators';
 import { DatasetIdentifier, ProjectIdentifier } from '../../types';
-import { client } from './../../api/client';
+import { client, getClient } from './../../api/client';
 import { copyMediaItem, getAnnotationMapToNewProject } from './copy-media-item';
 import { createProject } from './create-project';
 import { disableAutoTraining } from './disable-auto-training';
@@ -26,7 +27,7 @@ const destinationWorkspaceIdentifier = {
 const sourceClient = client;
 const source = { client: sourceClient, projectIdentifier: sourceProjectIdentifier };
 
-const destinationClient = client;
+const destinationClient = getClient(getEnv('_DESTINATION'));
 const destination = {
     client: destinationClient,
     workspaceIdentifier: destinationWorkspaceIdentifier,
@@ -85,6 +86,7 @@ await disableAutoTraining(destination, newProject, true);
 
 console.log('Finished copying project');
 
+// Used for debugging
 if (CONFIG.DELETE_PROJECT) {
     // 4. Delete the project (optional, for testing)
     console.log('Deleting project...');

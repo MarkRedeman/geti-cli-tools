@@ -15,6 +15,7 @@ type ImageAnnotationResponse =
     operations['GetImageAnnotation']['responses']['200']['content']['application/json'];
 type Annotation = Exclude<ImageAnnotationResponse['annotations'], undefined>[number];
 
+// TODO: update OpenAPI spec
 type ActualVideoAnnotationsResponse = {
     video_annotations: Array<VideoAnnotationResponse>;
     video_annotation_properties: {
@@ -55,7 +56,7 @@ export function getAnnotationMapToNewProject(oldProject: Project, newProject: Pr
 
 async function getImageAnnotations(
     client: Client,
-    sourceDatasetIdentifier: DatasetIdentifier,
+    datasetIdentifier: DatasetIdentifier,
     mediaItem: MediaItem
 ) {
     if (mediaItem.type !== 'image') {
@@ -67,7 +68,7 @@ async function getImageAnnotations(
     ].GET({
         params: {
             path: {
-                ...sourceDatasetIdentifier,
+                ...datasetIdentifier,
                 image_id: String(mediaItem.id),
                 annotation_id: 'latest',
             },
@@ -83,7 +84,7 @@ async function getImageAnnotations(
 
 export function getVideoAnnotations(
     client: Client,
-    sourceDatasetIdentifier: DatasetIdentifier,
+    datasetIdentifier: DatasetIdentifier,
     mediaItem: MediaItem
 ) {
     if (mediaItem.type !== 'video') {
@@ -108,7 +109,7 @@ export function getVideoAnnotations(
         ].GET({
             params: {
                 path: {
-                    ...sourceDatasetIdentifier,
+                    ...datasetIdentifier,
                     video_id: String(mediaItem.id),
                     annotation_id: 'latest',
                 },
@@ -158,8 +159,9 @@ export function getVideoAnnotations(
 }
 
 async function uploadImageMediaItem(
-    client: Client,
+    sourceClient: Client,
     sourceDatasetIdentifier: DatasetIdentifier,
+    destinationClient: Client,
     destinationDatasetIdentifier: DatasetIdentifier,
     oldMediaItem: MediaItem
 ) {
@@ -167,7 +169,7 @@ async function uploadImageMediaItem(
         throw new Error('Media item is not an image');
     }
 
-    const imageResponse = await client[
+    const imageResponse = await sourceClient[
         '/organizations/{organization_id}/workspaces/{workspace_id}/projects/{project_id}/datasets/{dataset_id}/media/images/{image_id}/display/full'
     ].GET({
         params: { path: { ...sourceDatasetIdentifier, image_id: oldMediaItem.id! } },
@@ -185,7 +187,7 @@ async function uploadImageMediaItem(
         `${oldMediaItem.name}.${oldMediaItem.media_information?.extension ?? 'png'}`
     );
 
-    const response = await client[
+    const response = await destinationClient[
         '/organizations/{organization_id}/workspaces/{workspace_id}/projects/{project_id}/datasets/{dataset_id}/media/images'
     ].POST({
         params: {
@@ -203,8 +205,9 @@ async function uploadImageMediaItem(
 }
 
 async function uploadVideoMediaItem(
-    client: Client,
+    sourceClient: Client,
     sourceDatasetIdentifier: DatasetIdentifier,
+    destinationClient: Client,
     destinationDatasetIdentifier: DatasetIdentifier,
     oldMediaItem: MediaItem
 ) {
@@ -212,7 +215,7 @@ async function uploadVideoMediaItem(
         throw new Error('Media item is not an video');
     }
 
-    const videoResponse = await client[
+    const videoResponse = await sourceClient[
         '/organizations/{organization_id}/workspaces/{workspace_id}/projects/{project_id}/datasets/{dataset_id}/media/videos/{video_id}/display/stream'
     ].GET({
         params: { path: { ...sourceDatasetIdentifier, video_id: String(oldMediaItem.id) } },
@@ -227,10 +230,11 @@ async function uploadVideoMediaItem(
     formData.append(
         'file',
         videoResponse.data,
+        // @ts-expect-error TODO: update OpenAPI spec
         `${oldMediaItem.name}.${oldMediaItem.media_information?.extension ?? 'png'}`
     );
 
-    const response = await client[
+    const response = await destinationClient[
         '/organizations/{organization_id}/workspaces/{workspace_id}/projects/{project_id}/datasets/{dataset_id}/media/videos'
     ].POST({
         params: {
@@ -248,9 +252,9 @@ async function uploadVideoMediaItem(
 }
 
 export async function copyMediaItem(
-    client: Client,
+    sourceClient: Client,
     sourceDatasetIdentifier: DatasetIdentifier,
-    destinationClient: Client
+    destinationClient: Client,
     destinationDatasetIdentifier: DatasetIdentifier,
     oldMediaItem: MediaItem,
     // Used to map labels of an annotation
@@ -260,19 +264,20 @@ export async function copyMediaItem(
 
     if (oldMediaItem.type === 'image') {
         const annotations = await getImageAnnotations(
-            client,
+            sourceClient,
             sourceDatasetIdentifier,
             oldMediaItem
         );
 
         const newMediaItem = await uploadImageMediaItem(
-            client,
+            sourceClient,
             sourceDatasetIdentifier,
+            destinationClient,
             destinationDatasetIdentifier,
             oldMediaItem
         );
 
-        const annotationsResponse = await client[
+        const annotationsResponse = await destinationClient[
             '/organizations/{organization_id}/workspaces/{workspace_id}/projects/{project_id}/datasets/{dataset_id}/media/images/{image_id}/annotations'
         ].POST({
             params: {
@@ -285,7 +290,7 @@ export async function copyMediaItem(
                 annotations: annotations.map((annotation) => {
                     const shape = annotation.shape!;
                     const labels = annotation.labels.map(getNewLabel).map((label) => ({
-                        id: label.id,
+                        id: label.id!,
                     }));
 
                     return { labels, shape };
@@ -299,11 +304,16 @@ export async function copyMediaItem(
     }
 
     if (oldMediaItem.type === 'video') {
-        const annotations = getVideoAnnotations(client, sourceDatasetIdentifier, oldMediaItem);
+        const annotations = getVideoAnnotations(
+            sourceClient,
+            sourceDatasetIdentifier,
+            oldMediaItem
+        );
 
         const newMediaItem = await uploadVideoMediaItem(
-            client,
+            sourceClient,
             sourceDatasetIdentifier,
+            destinationClient,
             destinationDatasetIdentifier,
             oldMediaItem
         );
@@ -314,7 +324,7 @@ export async function copyMediaItem(
                 videoAnnotation.annotations?.length
             );
 
-            const annotationsResponse = await client[
+            const annotationsResponse = await destinationClient[
                 '/organizations/{organization_id}/workspaces/{workspace_id}/projects/{project_id}/datasets/{dataset_id}/media/videos/{video_id}/frames/{frame_index}/annotations'
             ].POST({
                 params: {
@@ -330,7 +340,7 @@ export async function copyMediaItem(
                             const shape = annotation.shape!;
 
                             const labels = annotation.labels.map(getNewLabel).map((label) => ({
-                                id: label.id,
+                                id: label.id!,
                             }));
 
                             return { labels, shape };
