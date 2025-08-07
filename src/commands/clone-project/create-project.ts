@@ -59,7 +59,10 @@ export async function createProject(
                             // NOTE: if a project renamed their empty label then
                             // cloning may not fully work as we won't be able to
                             // map the empty labels
-                            .filter((l) => l.group !== 'Empty'),
+                            .filter(
+                                (l) =>
+                                    ['Empty', 'No object', 'No class'].includes(l.group) === false
+                            ),
                     };
                 }),
             },
