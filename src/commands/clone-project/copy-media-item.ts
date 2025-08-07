@@ -330,11 +330,6 @@ export async function copyMediaItem(
         );
 
         for await (const videoAnnotation of annotations) {
-            console.log(
-                videoAnnotation.media_identifier?.frame_index,
-                videoAnnotation.annotations?.length
-            );
-
             const annotationsResponse = await destinationClient[
                 '/organizations/{organization_id}/workspaces/{workspace_id}/projects/{project_id}/datasets/{dataset_id}/media/videos/{video_id}/frames/{frame_index}/annotations'
             ].POST({

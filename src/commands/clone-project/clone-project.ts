@@ -2,7 +2,7 @@
 import { getEnv } from '../../api/environment';
 import { mediaPagesIterator } from '../../geti-iterators';
 import { DatasetIdentifier, ProjectIdentifier } from '../../types';
-import { client, getClient } from './../../api/client';
+import { getClient } from './../../api/client';
 import { copyMediaItem, getAnnotationMapToNewProject } from './copy-media-item';
 import { createProject } from './create-project';
 import { disableAutoTraining } from './disable-auto-training';
@@ -12,28 +12,27 @@ const CONFIG = {
     DELETE_PROJECT: false,
 };
 
+const sourceClient = getClient(getEnv('_SOURCE'));
+const destinationClient = getClient(getEnv('_DESTINATION'));
+
 const sourceProjectIdentifier: ProjectIdentifier = {
-    organization_id: 'afb8497c-0ef2-4cf7-8fe0-ecce8e8a2ed6',
-    workspace_id: '9386e827-f0bd-40c3-917a-8cc2fb876a77',
-    //project_id: '688b56199b676169969b4192',
-    //project_id: '688b57784a06657f2291db26',
-    project_id: '689368c17ff33d02166fea7c',
+    organization_id: process.env['SOURCE_ORGANIZATION_ID']!,
+    workspace_id: process.env['SOURCE_WORKSPACE_ID']!,
+    project_id: process.env['SOURCE_PROJECT_ID']!,
 };
 const destinationWorkspaceIdentifier = {
-    organization_id: 'afb8497c-0ef2-4cf7-8fe0-ecce8e8a2ed6',
-    workspace_id: '9386e827-f0bd-40c3-917a-8cc2fb876a77',
+    organization_id: process.env['DESTINATION_ORGANIZATION_ID']!,
+    workspace_id: process.env['DESTINATION_WORKSPACE_ID']!,
 };
 
-const sourceClient = client;
 const source = { client: sourceClient, projectIdentifier: sourceProjectIdentifier };
 
-const destinationClient = getClient(getEnv('_DESTINATION'));
 const destination = {
     client: destinationClient,
     workspaceIdentifier: destinationWorkspaceIdentifier,
 };
 
-const projectResponse = await client[
+const projectResponse = await sourceClient[
     '/organizations/{organization_id}/workspaces/{workspace_id}/projects/{project_id}'
 ].GET({
     params: { path: sourceProjectIdentifier },
@@ -44,15 +43,18 @@ if (projectResponse.error) {
 }
 
 const oldProject = projectResponse.data;
+console.log('Received project', oldProject);
 
 // 1. Create a new project with the same name and pipeline
 const newProject = await createProject(destination, oldProject);
+console.log('Created project', newProject);
 
 // 2. Disable auto training
 await disableAutoTraining(destination, newProject, false);
 
-// 3. Create all non-training datasets - possibly rename?
+// 3. Clone datasets
 for await (const dataset of oldProject.datasets) {
+    // Create or update dataset
     const newDataset = await getDataset(destination, newProject, dataset);
 
     const sourceDatasetIdentifier: DatasetIdentifier = {
@@ -69,7 +71,13 @@ for await (const dataset of oldProject.datasets) {
 
     const getNewLabel = getAnnotationMapToNewProject(oldProject, newProject);
 
-    for await (const mediaItem of mediaPagesIterator(client, sourceDatasetIdentifier)) {
+    // Clone media items
+    for await (const mediaItem of mediaPagesIterator(sourceClient, sourceDatasetIdentifier)) {
+        console.log(
+            mediaItem.name,
+            mediaItem.type === 'video' ? mediaItem.media_information?.frame_count : 0
+        );
+
         await copyMediaItem(
             source.client,
             sourceDatasetIdentifier,
@@ -92,7 +100,7 @@ if (CONFIG.DELETE_PROJECT) {
     console.log('Deleting project...');
     await new Promise((resolve) => setTimeout(resolve, 5_000));
 
-    const deleteProjectResponse = await client[
+    const deleteProjectResponse = await destinationClient[
         '/organizations/{organization_id}/workspaces/{workspace_id}/projects/{project_id}'
     ].DELETE({
         params: { path: { ...destinationWorkspaceIdentifier, project_id: newProject.id! } },
