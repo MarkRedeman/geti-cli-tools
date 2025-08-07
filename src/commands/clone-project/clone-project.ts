@@ -51,6 +51,9 @@ console.log('Cloning project', oldProject.name);
 const newProject = await createProject(destination, oldProject);
 console.log('Created project');
 
+// Wait a little so that the server has time to create a project configuration
+await new Promise((resolve) => setTimeout(resolve, 2_000));
+
 // 2. Disable auto training
 await disableAutoTraining(destination, newProject, false);
 

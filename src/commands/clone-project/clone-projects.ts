@@ -28,6 +28,7 @@ const destination = {
 };
 
 const projects = projectsIterator(sourceClient);
+
 for await (const {
     project: { id: projectId },
     workspaceId,
@@ -57,6 +58,9 @@ for await (const {
     // 1. Create a new project with the same name and pipeline
     const newProject = await createProject(destination, oldProject);
     console.log('Created project');
+
+    // Wait a little so that the server has time to create a project configuration
+    await new Promise((resolve) => setTimeout(resolve, 2_000));
 
     // 2. Disable auto training
     await disableAutoTraining(destination, newProject, false);
