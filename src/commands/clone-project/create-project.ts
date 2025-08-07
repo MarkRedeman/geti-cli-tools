@@ -23,7 +23,7 @@ export async function createProject(
     ].POST({
         params: { path: workspaceIdentifier },
         body: {
-            name: `Cloned: ${project.name}`,
+            name: `${project.name}`,
             pipeline: {
                 connections: project.pipeline.connections.map((connection) => {
                     const tasks = project.pipeline.tasks;
