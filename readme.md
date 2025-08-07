@@ -63,3 +63,18 @@ NODE_TLS_REJECT_UNAUTHORIZED=0 \
 > [!NOTE]
 > This script should be compatible with multiple versions of Geti.
 > Recently this has been tested on cloning a project from v2.7 to v2.12.
+
+### Cloning all projects
+
+
+```bash
+BASE_URL_SOURCE="https://10.10.10.01/api/v1" \
+API_KEY_SOURCE="geti_pat_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx_xxxxxx" \
+BASE_URL_DESTINATION="https://20.20.20.02/api/v1" \
+API_KEY_DESTINATON="geti_pat_yyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyy_yyyyyy" \
+no_proxy="20.20.20.02" \ # optionally if in a corporate network
+DESTINATION_ORGANIZATION_ID="16b7b540-7ab7-4ef1-90dc-0f69a9c36ace"
+DESTINATION_WORKSPACE_ID="ae943e13-507f-454a-997a-46cdd303e4e1"
+NODE_TLS_REJECT_UNAUTHORIZED=0 \
+    bun ./src/commands/clone-project/clone-projects.ts
+```

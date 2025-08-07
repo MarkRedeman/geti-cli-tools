@@ -11,7 +11,7 @@ import { getDataset } from './get-dataset';
 
 const CONFIG = {
     DELETE_PROJECT: false,
-    UPLOAD_IN_CHUNKCS: 5,
+    UPLOAD_IN_CHUNKCS: 2,
 };
 
 const sourceClient = getClient(getEnv('_SOURCE'));
@@ -45,11 +45,11 @@ if (projectResponse.error) {
 }
 
 const oldProject = projectResponse.data;
-console.log('Received project', oldProject);
+console.log('Cloning project', oldProject.name);
 
 // 1. Create a new project with the same name and pipeline
 const newProject = await createProject(destination, oldProject);
-console.log('Created project', newProject);
+console.log('Created project');
 
 // 2. Disable auto training
 await disableAutoTraining(destination, newProject, false);
