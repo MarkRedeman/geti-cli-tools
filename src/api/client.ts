@@ -2,13 +2,16 @@ import { createPathBasedClient } from 'openapi-fetch';
 import { getEnv } from './environment';
 import type { paths } from './geti-openapi-schema';
 
-const { baseUrl, apiKey } = getEnv();
-
-export const client = createPathBasedClient<paths>({
+export function getClient<Paths extends {} = paths>({
     baseUrl,
-    headers: {
-        'x-api-key': apiKey,
-    },
-});
+    apiKey,
+}: {
+    baseUrl: string;
+    apiKey: string;
+}) {
+    return createPathBasedClient<Paths>({ baseUrl, headers: { 'x-api-key': apiKey } });
+}
+
+export const client = getClient(getEnv());
 
 export type Client = typeof client;

@@ -1,7 +1,7 @@
 import { Client } from './api/client';
 import { type components } from './api/geti-openapi-schema';
 import { filter, flatten, NextPage, pagesIterator } from './iterators';
-import { ProjectIdentifier, WorkspaceIdentifier } from './types';
+import { DatasetIdentifier, ProjectIdentifier, WorkspaceIdentifier } from './types';
 
 export type ModelGroup = components['schemas']['model_group'];
 export type Model = components['schemas']['model'];
@@ -49,7 +49,7 @@ type ArrayElement<ArrayType extends readonly unknown[]> =
     ArrayType extends readonly (infer ElementType)[] ? ElementType : never;
 
 export type Projects = components['schemas']['project_list']['projects'];
-type Project = ArrayElement<Exclude<Projects, undefined>>;
+export type ProjectFromList = ArrayElement<Exclude<Projects, undefined>>;
 
 const projectsPagesIterator = (client: Client, workspaceIdentifier: WorkspaceIdentifier) => {
     const projects = flatten(
@@ -83,7 +83,7 @@ const projectsPagesIterator = (client: Client, workspaceIdentifier: WorkspaceIde
 
     return projects;
 };
-type ProjectFilter = (project: Project) => boolean;
+type ProjectFilter = (project: ProjectFromList) => boolean;
 
 export async function* projectsIterator(
     client: Client,
@@ -119,4 +119,38 @@ export async function* projectsIterator(
             };
         }
     }
+}
+
+export function mediaPagesIterator(client: Client, datasetIdentifier: DatasetIdentifier) {
+    const mediaPages = pagesIterator(async (currentPage: NextPage) => {
+        const { data } = await client[
+            '/organizations/{organization_id}/workspaces/{workspace_id}/projects/{project_id}/datasets/{dataset_id}/media:query'
+        ].POST({
+            params: {
+                path: datasetIdentifier,
+                query: {
+                    sort_by: 'media_upload_date',
+                    sort_direction: 'asc',
+                    skip: currentPage === null ? undefined : currentPage,
+                },
+            },
+            // @ts-expect-error we don't want to pass any filters
+            body: {},
+        });
+
+        if (data?.media) {
+            const skip = data.next_page
+                ? (new URLSearchParams(data.next_page).get('skip') ?? '0')
+                : undefined;
+
+            return { data: data.media, nextPage: skip };
+        }
+
+        return {
+            data: [],
+            nextPage: undefined,
+        };
+    });
+
+    return flatten(mediaPages);
 }
