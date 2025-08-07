@@ -45,7 +45,15 @@ export async function createProject(
                         labels: task.labels
                             ?.map((l) => {
                                 const { id, is_anomalous, is_empty, ...label } = l;
-                                return label;
+
+                                const parentLabelId =
+                                    l.parent_id !== null
+                                        ? task.labels?.find(({ id }) => id === l.parent_id)?.name
+                                        : null;
+                                return {
+                                    ...label,
+                                    parent_id: parentLabelId,
+                                };
                             })
                             // Empty label is auto created
                             // NOTE: if a project renamed their empty label then
