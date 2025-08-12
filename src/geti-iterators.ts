@@ -51,7 +51,7 @@ type ArrayElement<ArrayType extends readonly unknown[]> =
 export type Projects = components['schemas']['project_list']['projects'];
 export type ProjectFromList = ArrayElement<Exclude<Projects, undefined>>;
 
-const projectsPagesIterator = (client: Client, workspaceIdentifier: WorkspaceIdentifier) => {
+export const projectsPagesIterator = (client: Client, workspaceIdentifier: WorkspaceIdentifier) => {
     const projects = flatten(
         pagesIterator(async (currentPage: NextPage) => {
             const { data } = await client[
