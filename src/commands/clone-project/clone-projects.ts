@@ -11,7 +11,7 @@ import { getDataset } from './get-dataset';
 
 const CONFIG = {
     DELETE_PROJECT: false,
-    UPLOAD_IN_CHUNKCS: 2,
+    UPLOAD_IN_CHUNKCS: 5,
 };
 
 const sourceClient = getClient(getEnv('_SOURCE'));
