@@ -98,14 +98,23 @@ for await (const {
                         mediaItem.type === 'video' ? mediaItem.media_information?.frame_count : 0
                     );
 
-                    await copyMediaItem(
-                        source.client,
-                        sourceDatasetIdentifier,
-                        destination.client,
-                        destinationDatasetIdentifier,
-                        mediaItem,
-                        getNewLabel
-                    );
+                    try {
+                        await copyMediaItem(
+                            source.client,
+                            sourceDatasetIdentifier,
+                            destination.client,
+                            destinationDatasetIdentifier,
+                            mediaItem,
+                            getNewLabel
+                        );
+                    } catch (error) {
+                        console.error(
+                            'Ignoring copy media item error',
+                            error,
+                            mediaItem.type,
+                            mediaItem.id
+                        );
+                    }
                 })
             );
         }
