@@ -2,11 +2,39 @@ import { Client } from '../../api/client';
 import { WorkspaceIdentifier } from '../../types';
 import { type components, type operations } from './../../api/geti-openapi-schema';
 
+const EMPTY_CLASSES = ['Empty', 'No object', 'No class'];
+
 // project-2 is GET project response?
 type Project = components['schemas']['project-2'];
 
 type Task =
     operations['CreateProject']['requestBody']['content']['application/json']['pipeline']['tasks'][number];
+
+type ExistingTask = Project['pipeline']['tasks'][number];
+
+function getKeypointStructure(task: ExistingTask) {
+    const taskType = task.task_type as Task['task_type'];
+
+    if (taskType !== 'keypoint_detection') {
+        return undefined;
+    }
+
+    const idToName = (labelId: string) => {
+        return task.labels?.find(({ id }) => id === labelId)?.name!;
+    };
+
+    return {
+        edges: task.keypoint_structure?.edges?.map((edge) => {
+            return { nodes: edge.nodes.map(idToName) };
+        }),
+        positions: task.keypoint_structure?.positions?.map((position) => {
+            return {
+                ...position,
+                label: idToName(position.label),
+            };
+        }),
+    };
+}
 
 export async function createProject(
     {
@@ -38,10 +66,12 @@ export async function createProject(
                 }),
                 tasks: project.pipeline.tasks.map((task): Task => {
                     const taskType = task.task_type as Task['task_type'];
+                    const keypoint_structure = getKeypointStructure(task);
 
                     return {
                         task_type: taskType,
                         title: task.title,
+                        keypoint_structure,
                         labels: task.labels
                             ?.map((l) => {
                                 const { id, is_anomalous, is_empty, ...label } = l;
@@ -59,10 +89,8 @@ export async function createProject(
                             // NOTE: if a project renamed their empty label then
                             // cloning may not fully work as we won't be able to
                             // map the empty labels
-                            .filter(
-                                (l) =>
-                                    ['Empty', 'No object', 'No class'].includes(l.group) === false
-                            ),
+                            .filter((label) => EMPTY_CLASSES.includes(label.group) === false)
+                            .filter(() => task.task_type !== 'anomaly'),
                     };
                 }),
             },
