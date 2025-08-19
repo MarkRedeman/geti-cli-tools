@@ -48,7 +48,6 @@ for await (const { project, workspaceId, organizationId } of projects) {
         }
 
         console.log(`[${project.name}] Started optimizing ${model.name}`);
-        continue;
 
         const optimizationResponse = await client[
             '/organizations/{organization_id}/workspaces/{workspace_id}/projects/{project_id}/model_groups/{model_group_id}/models/{model_id}:optimize'
